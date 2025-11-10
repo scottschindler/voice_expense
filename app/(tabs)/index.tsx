@@ -1,98 +1,299 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
+import { useState } from 'react';
+import {
+  StyleSheet,
+  View,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Platform,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+
+interface Expense {
+  id: string;
+  day: number;
+  description: string;
+  amount: number;
+}
+
+interface ExpenseGroup {
+  month: string;
+  year: number;
+  expenses: Expense[];
+}
+
+// Sample data matching the screenshot
+const sampleExpenses: ExpenseGroup[] = [
+  {
+    month: 'APRIL',
+    year: 2024,
+    expenses: [
+      { id: '1', day: 17, description: 'Office Supplies', amount: 15.0 },
+      { id: '2', day: 16, description: 'Dinner with Client', amount: 42.0 },
+      { id: '3', day: 15, description: 'Lunch', amount: 8.99 },
+      { id: '4', day: 15, description: 'Flight', amount: 114.0 },
+    ],
+  },
+  {
+    month: 'MARCH',
+    year: 2024,
+    expenses: [
+      { id: '5', day: 28, description: 'Software Subscription', amount: 19.99 },
+    ],
+  },
+];
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const [searchQuery, setSearchQuery] = useState('');
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const router = useRouter();
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
+  // Calculate total expenses
+  const totalExpenses = sampleExpenses.reduce((sum, group) => {
+    return sum + group.expenses.reduce((groupSum, expense) => groupSum + expense.amount, 0);
+  }, 0);
+
+  // Format amount with comma as decimal separator (as shown in screenshot)
+  const formatAmount = (amount: number) => {
+    return amount.toFixed(2).replace('.', ',');
+  };
+
+  // Filter expenses based on search query
+  const filteredExpenses = sampleExpenses.map((group) => ({
+    ...group,
+    expenses: group.expenses.filter(
+      (expense) =>
+        expense.description.toLowerCase().includes(searchQuery.toLowerCase())
+    ),
+  })).filter((group) => group.expenses.length > 0);
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ThemedView style={styles.content}>
+        {/* Header */}
+        <View style={styles.header}>
+          <ThemedText type="title" style={styles.title}>
+            Expenses
+          </ThemedText>
+        </View>
+
+        {/* Search and Add Section */}
+        <View style={styles.searchSection}>
+          <View
+            style={[
+              styles.searchBar,
+              isDark && styles.searchBarDark,
+            ]}>
+            <Ionicons
+              name="search"
+              size={18}
+              color={isDark ? '#9BA1A6' : '#687076'}
+              style={styles.searchIcon}
+            />
+            <TextInput
+              style={[
+                styles.searchInput,
+                isDark && styles.searchInputDark,
+              ]}
+              placeholder="Search"
+              placeholderTextColor={isDark ? '#9BA1A6' : '#687076'}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.addButton,
+              isDark && styles.addButtonDark,
+            ]}>
+            <Ionicons
+              name="add"
+              size={24}
+              color={isDark ? '#ECEDEE' : '#11181C'}
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Total Expenses */}
+        <View style={styles.totalSection}>
+          <ThemedText style={styles.totalText}>
+            Total {formatAmount(totalExpenses)}
+          </ThemedText>
+        </View>
+
+        {/* Expense List */}
+        <ScrollView
+          style={styles.expenseList}
+          contentContainerStyle={styles.expenseListContent}
+          showsVerticalScrollIndicator={false}>
+          {filteredExpenses.map((group, groupIndex) => (
+            <View key={`${group.month}-${group.year}`} style={styles.expenseGroup}>
+              <ThemedText style={styles.monthHeader}>
+                {group.month} {group.year}
+              </ThemedText>
+              {group.expenses.map((expense) => (
+                <View
+                  key={expense.id}
+                  style={[
+                    styles.expenseItem,
+                    groupIndex === filteredExpenses.length - 1 &&
+                      expense.id === group.expenses[group.expenses.length - 1].id &&
+                      styles.lastExpenseItem,
+                  ]}>
+                  <View style={styles.expenseContent}>
+                    <ThemedText style={styles.expenseDay}>{expense.day}</ThemedText>
+                    <ThemedText style={styles.expenseDescription}>
+                      {expense.description}
+                    </ThemedText>
+                    <ThemedText style={styles.expenseAmount}>
+                      ${formatAmount(expense.amount)}
+                    </ThemedText>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ))}
+        </ScrollView>
+
+        {/* Floating Action Button */}
+        <TouchableOpacity
+          style={styles.fab}
+          activeOpacity={0.8}
+          onPress={() => router.push('/record')}>
+          <Ionicons name="mic" size={28} color="#fff" />
+        </TouchableOpacity>
       </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  header: {
+    paddingTop: Platform.OS === 'ios' ? 8 : 16,
+    paddingBottom: 24,
+  },
+  title: {
+    fontSize: 34,
+    fontWeight: '700',
+  },
+  searchSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
+    marginBottom: 20,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  searchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 44,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
+  searchBarDark: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 17,
+    color: '#11181C',
+    padding: 0,
+  },
+  searchInputDark: {
+    color: '#ECEDEE',
+  },
+  addButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addButtonDark: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  totalSection: {
+    marginBottom: 20,
+  },
+  totalText: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  expenseList: {
+    flex: 1,
+  },
+  expenseListContent: {
+    paddingBottom: 100, // Space for FAB
+  },
+  expenseGroup: {
+    marginBottom: 24,
+  },
+  monthHeader: {
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    opacity: 0.6,
+    marginBottom: 12,
+    textTransform: 'uppercase',
+  },
+  expenseItem: {
+    marginBottom: 16,
+  },
+  lastExpenseItem: {
+    marginBottom: 0,
+  },
+  expenseContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  expenseDay: {
+    fontSize: 17,
+    fontWeight: '400',
+    minWidth: 30,
+  },
+  expenseDescription: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '400',
+  },
+  expenseAmount: {
+    fontSize: 17,
+    fontWeight: '400',
+  },
+  fab: {
     position: 'absolute',
+    bottom: 24,
+    alignSelf: 'center',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#007AFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#007AFF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
 });
