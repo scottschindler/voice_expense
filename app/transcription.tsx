@@ -1,5 +1,6 @@
 import { ThemedText } from '@/components/themed-text';
 import { categorizeText, ExpenseData } from '@/utils/openai';
+import { supabase } from '@/utils/supabase';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -9,6 +10,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -16,6 +18,7 @@ export default function TranscriptionScreen() {
   const { text } = useLocalSearchParams<{ text: string }>();
   const [expenseData, setExpenseData] = useState<ExpenseData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
@@ -68,15 +71,94 @@ export default function TranscriptionScreen() {
     }
   }
 
-  const formatAmount = (amount: number) => {
+  const formatAmount = (amount: number | null | undefined) => {
+    if (amount === null || amount === undefined) {
+      return '';
+    }
     return `$${amount.toFixed(2)}`;
   };
 
-  const handleSave = () => {
-    // TODO: Save expense data to database/storage
-    // Dismiss all modals and navigate to home as full screen
-    router.dismissAll();
-    router.replace('/(tabs)');
+  /**
+   * Parses a date string in format "MMM DD, YYYY" (e.g., "Apr 24, 2024") to a Date object
+   * Falls back to today's date if parsing fails
+   */
+  const parseDateString = (dateString: string | null): Date => {
+    if (!dateString) {
+      return new Date();
+    }
+
+    try {
+      // Try to parse the date string (format: "MMM DD, YYYY")
+      const parsedDate = new Date(dateString);
+      if (isNaN(parsedDate.getTime())) {
+        // If parsing fails, return today's date
+        return new Date();
+      }
+      return parsedDate;
+    } catch (error) {
+      console.warn('Failed to parse date string:', dateString, error);
+      return new Date();
+    }
+  };
+
+  const handleSave = async () => {
+    if (!expenseData || !text) {
+      Alert.alert('Error', 'Missing expense data or transcript');
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      // Get the current authenticated user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        throw new Error('User not authenticated. Please log in again.');
+      }
+
+      if (!user.email) {
+        throw new Error('User email is missing');
+      }
+
+      // Parse the date string to a Date object
+      const transactionDate = parseDateString(expenseData.date);
+      
+      // Format date as YYYY-MM-DD for PostgreSQL date type
+      const dateString = transactionDate.toISOString().split('T')[0];
+
+      // Ensure amount is not null (default to 0 if null)
+      const amount = expenseData.amount ?? 0;
+
+      // Insert the note into the database
+      const { error: insertError } = await supabase
+        .from('notes')
+        .insert({
+          user_id: user.id,
+          email: user.email,
+          amount: amount,
+          date_of_transaction: dateString,
+          description: expenseData.memo || null,
+          category: expenseData.category || null,
+          transcript: text,
+        });
+
+      if (insertError) {
+        throw new Error(`Failed to save note: ${insertError.message}`);
+      }
+
+      // Success - navigate back to home
+      router.dismissAll();
+      router.replace('/(tabs)');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save expense';
+      setError(errorMessage);
+      Alert.alert('Error', errorMessage);
+      console.error('Error saving note:', err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -138,10 +220,14 @@ export default function TranscriptionScreen() {
         {/* Save Button */}
         <View style={styles.saveButtonContainer}>
           <TouchableOpacity
-            style={styles.saveButton}
+            style={[styles.saveButton, (isSaving || !expenseData || isLoading) && styles.saveButtonDisabled]}
             onPress={handleSave}
-            disabled={!expenseData || isLoading}>
-            <Text style={styles.saveButtonText}>Save</Text>
+            disabled={!expenseData || isLoading || isSaving}>
+            {isSaving ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -237,6 +323,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#007AFF',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  saveButtonDisabled: {
+    backgroundColor: '#C7C7CC',
   },
   saveButtonText: {
     fontSize: 17,

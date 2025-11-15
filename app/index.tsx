@@ -34,13 +34,13 @@ import * as Linking from 'expo-linking';
 import * as QueryParams from 'expo-auth-session/build/QueryParams';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '@/utils/supabase';
+import { supabase, ensureUserInDatabase } from '@/utils/supabase';
 
 // Required for web only
 WebBrowser.maybeCompleteAuthSession();
 
 // Helper function to create session from OAuth callback URL
-const createSessionFromUrl = async (url: string) => {
+const createSessionFromUrl = async (url: string, authMethod: 'apple' | 'google' | 'email' = 'email') => {
   const { params, errorCode } = QueryParams.getQueryParams(url);
 
   if (errorCode) throw new Error(errorCode);
@@ -54,6 +54,10 @@ const createSessionFromUrl = async (url: string) => {
   });
   
   if (error) throw error;
+  
+  // Ensure user exists in database after successful authentication
+  await ensureUserInDatabase(authMethod);
+  
   return data.session;
 };
 
@@ -68,7 +72,8 @@ export default function AuthScreen() {
   const url = Linking.useURL();
   useEffect(() => {
     if (url) {
-      createSessionFromUrl(url).then(() => {
+      // Default to 'google' for OAuth callbacks from deep links
+      createSessionFromUrl(url, 'google').then(() => {
         router.replace('/(tabs)/');
       }).catch((error) => {
         console.error('Error handling deep link:', error);
@@ -104,6 +109,9 @@ export default function AuthScreen() {
           throw error;
         }
 
+        // Ensure user exists in database after successful authentication
+        await ensureUserInDatabase('apple');
+
         // Handle successful authentication
         console.log('Apple Sign In successful:', data);
         router.replace('/(tabs)/');
@@ -129,6 +137,7 @@ export default function AuthScreen() {
 
       // Create redirect URL using expo-linking
       const redirectUrl = Linking.createURL('auth/callback', {});
+      console.log('Redirect URL:', redirectUrl); // Debug: check what URL is generated
 
       // Get Supabase OAuth URL with skipBrowserRedirect
       const { data, error: urlError } = await supabase.auth.signInWithOAuth({
@@ -155,7 +164,7 @@ export default function AuthScreen() {
         );
 
         if (result.type === 'success') {
-          await createSessionFromUrl(result.url);
+          await createSessionFromUrl(result.url, 'google');
           console.log('Google Sign In successful');
           router.replace('/(tabs)/');
         } else if (result.type === 'cancel') {

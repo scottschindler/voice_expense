@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,17 +6,20 @@ import {
   TouchableOpacity,
   ScrollView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { supabase } from '@/utils/supabase';
 
 interface Expense {
   id: string;
   day: number;
+  month: number;
   description: string;
   amount: number;
 }
@@ -27,45 +30,144 @@ interface ExpenseGroup {
   expenses: Expense[];
 }
 
-// Sample data matching the screenshot
-const sampleExpenses: ExpenseGroup[] = [
-  {
-    month: 'APRIL',
-    year: 2024,
-    expenses: [
-      { id: '1', day: 17, description: 'Office Supplies', amount: 15.0 },
-      { id: '2', day: 16, description: 'Dinner with Client', amount: 42.0 },
-      { id: '3', day: 15, description: 'Lunch', amount: 8.99 },
-      { id: '4', day: 15, description: 'Flight', amount: 114.0 },
-    ],
-  },
-  {
-    month: 'MARCH',
-    year: 2024,
-    expenses: [
-      { id: '5', day: 28, description: 'Software Subscription', amount: 19.99 },
-    ],
-  },
-];
+interface Note {
+  id: string;
+  user_id: string;
+  email: string;
+  amount: number;
+  date_of_transaction: string;
+  description: string | null;
+  category: string | null;
+  transcript: string | null;
+  created_at: string;
+}
+
+const transformNotesToExpenseGroups = (notes: Note[]): ExpenseGroup[] => {
+  // Group notes by month and year
+  const grouped = notes.reduce((acc, note) => {
+    const date = new Date(note.date_of_transaction);
+    const month = date.toLocaleString('en-US', { month: 'long' }).toUpperCase();
+    const year = date.getFullYear();
+    const day = date.getDate();
+    
+    const key = `${month}-${year}`;
+    
+    if (!acc[key]) {
+      acc[key] = {
+        month,
+        year,
+        expenses: [],
+      };
+    }
+    
+    acc[key].expenses.push({
+      id: note.id,
+      day,
+      month: date.getMonth() + 1, // getMonth() returns 0-11, so add 1
+      description: note.description || note.transcript || 'No description',
+      amount: Number(note.amount),
+    });
+    
+    return acc;
+  }, {} as Record<string, ExpenseGroup>);
+
+  // Convert to array and sort by date (newest first)
+  return Object.values(grouped).sort((a, b) => {
+    if (a.year !== b.year) {
+      return b.year - a.year;
+    }
+    const monthOrder: Record<string, number> = {
+      'JANUARY': 1, 'FEBRUARY': 2, 'MARCH': 3, 'APRIL': 4,
+      'MAY': 5, 'JUNE': 6, 'JULY': 7, 'AUGUST': 8,
+      'SEPTEMBER': 9, 'OCTOBER': 10, 'NOVEMBER': 11, 'DECEMBER': 12,
+    };
+    return monthOrder[b.month] - monthOrder[a.month];
+  });
+};
 
 export default function HomeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [expenseGroups, setExpenseGroups] = useState<ExpenseGroup[]>([]);
+  const [loading, setLoading] = useState(true);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const router = useRouter();
 
-  // Calculate total expenses
-  const totalExpenses = sampleExpenses.reduce((sum, group) => {
-    return sum + group.expenses.reduce((groupSum, expense) => groupSum + expense.amount, 0);
-  }, 0);
+  const fetchNotes = useCallback(async () => {
+    try {
+      setLoading(true);
+      
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        console.error('Error getting user:', userError);
+        setExpenseGroups([]);
+        return;
+      }
 
-  // Format amount with comma as decimal separator (as shown in screenshot)
+      // Fetch notes for the current user, ordered by date (newest first)
+      const { data: notes, error } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('date_of_transaction', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching notes:', error);
+        setExpenseGroups([]);
+        return;
+      }
+
+      // Transform notes into expense groups
+      const groups = transformNotesToExpenseGroups(notes || []);
+      setExpenseGroups(groups);
+    } catch (error) {
+      console.error('Error in fetchNotes:', error);
+      setExpenseGroups([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNotes();
+    
+    // Set up real-time subscription for notes changes
+    const notesSubscription = supabase
+      .channel('notes-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notes',
+        },
+        () => {
+          fetchNotes();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      notesSubscription.unsubscribe();
+    };
+  }, [fetchNotes]);
+
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchNotes();
+    }, [fetchNotes])
+  );
+
+  // Format amount as whole dollars without decimals
   const formatAmount = (amount: number) => {
-    return amount.toFixed(2).replace('.', ',');
+    return Math.round(amount).toString();
   };
 
   // Filter expenses based on search query
-  const filteredExpenses = sampleExpenses.map((group) => ({
+  const filteredExpenses = expenseGroups.map((group) => ({
     ...group,
     expenses: group.expenses.filter(
       (expense) =>
@@ -120,46 +222,53 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Total Expenses */}
-        <View style={styles.totalSection}>
-          <ThemedText style={styles.totalText}>
-            Total {formatAmount(totalExpenses)}
-          </ThemedText>
-        </View>
-
         {/* Expense List */}
-        <ScrollView
-          style={styles.expenseList}
-          contentContainerStyle={styles.expenseListContent}
-          showsVerticalScrollIndicator={false}>
-          {filteredExpenses.map((group, groupIndex) => (
-            <View key={`${group.month}-${group.year}`} style={styles.expenseGroup}>
-              <ThemedText style={styles.monthHeader}>
-                {group.month} {group.year}
-              </ThemedText>
-              {group.expenses.map((expense) => (
-                <View
-                  key={expense.id}
-                  style={[
-                    styles.expenseItem,
-                    groupIndex === filteredExpenses.length - 1 &&
-                      expense.id === group.expenses[group.expenses.length - 1].id &&
-                      styles.lastExpenseItem,
-                  ]}>
-                  <View style={styles.expenseContent}>
-                    <ThemedText style={styles.expenseDay}>{expense.day}</ThemedText>
-                    <ThemedText style={styles.expenseDescription}>
-                      {expense.description}
-                    </ThemedText>
-                    <ThemedText style={styles.expenseAmount}>
-                      ${formatAmount(expense.amount)}
-                    </ThemedText>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={isDark ? '#ECEDEE' : '#11181C'} />
+          </View>
+        ) : filteredExpenses.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <ThemedText style={styles.emptyText}>
+              {searchQuery ? 'No expenses found' : 'No expenses yet'}
+            </ThemedText>
+          </View>
+        ) : (
+          <ScrollView
+            style={styles.expenseList}
+            contentContainerStyle={styles.expenseListContent}
+            showsVerticalScrollIndicator={false}>
+            {filteredExpenses.map((group, groupIndex) => (
+              <View key={`${group.month}-${group.year}`} style={styles.expenseGroup}>
+                <ThemedText style={styles.monthHeader}>
+                  {group.month} {group.year}
+                </ThemedText>
+                {group.expenses.map((expense) => (
+                  <View
+                    key={expense.id}
+                    style={[
+                      styles.expenseItem,
+                      groupIndex === filteredExpenses.length - 1 &&
+                        expense.id === group.expenses[group.expenses.length - 1].id &&
+                        styles.lastExpenseItem,
+                    ]}>
+                    <View style={styles.expenseContent}>
+                      <ThemedText style={styles.expenseDate}>
+                        {expense.month}/{expense.day}
+                      </ThemedText>
+                      <ThemedText style={styles.expenseDescription}>
+                        {expense.description}
+                      </ThemedText>
+                      <ThemedText style={styles.expenseAmount}>
+                        ${formatAmount(expense.amount)}
+                      </ThemedText>
+                    </View>
                   </View>
-                </View>
-              ))}
-            </View>
-          ))}
-        </ScrollView>
+                ))}
+              </View>
+            ))}
+          </ScrollView>
+        )}
 
         {/* Floating Action Button */}
         <TouchableOpacity
@@ -231,13 +340,6 @@ const styles = StyleSheet.create({
   addButtonDark: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
-  totalSection: {
-    marginBottom: 20,
-  },
-  totalText: {
-    fontSize: 17,
-    fontWeight: '600',
-  },
   expenseList: {
     flex: 1,
   },
@@ -266,10 +368,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 16,
   },
-  expenseDay: {
+  expenseDate: {
     fontSize: 17,
     fontWeight: '400',
-    minWidth: 30,
+    minWidth: 50,
   },
   expenseDescription: {
     flex: 1,
@@ -280,9 +382,25 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '400',
   },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyText: {
+    fontSize: 17,
+    opacity: 0.6,
+  },
   fab: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 40,
     alignSelf: 'center',
     width: 64,
     height: 64,

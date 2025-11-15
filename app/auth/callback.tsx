@@ -12,7 +12,7 @@ import { useEffect } from 'react';
 import { ActivityIndicator, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as QueryParams from 'expo-auth-session/build/QueryParams';
-import { supabase } from '@/utils/supabase';
+import { supabase, ensureUserInDatabase } from '@/utils/supabase';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 
@@ -52,6 +52,10 @@ export default function AuthCallback() {
         if (error) {
           throw error;
         }
+
+        // Ensure user exists in database after successful authentication
+        // Default to 'google' for OAuth callbacks
+        await ensureUserInDatabase('google');
 
         // Navigate to main app
         router.replace('/(tabs)/');

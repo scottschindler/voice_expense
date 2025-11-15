@@ -25,3 +25,74 @@ export const supabase = createClient(supabaseUrl, supabasePublishableKey, {
   },
 });
 
+/**
+ * Ensures a user exists in the users table after authentication.
+ * Creates a new user record if one doesn't exist.
+ * @param authMethod - Optional authentication method override. If not provided, will be detected from user metadata.
+ */
+export async function ensureUserInDatabase(authMethod?: 'apple' | 'google' | 'email') {
+  try {
+    // Get the current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      console.error('Error getting authenticated user:', userError);
+      return;
+    }
+
+    if (!user.email) {
+      console.error('User email is missing');
+      return;
+    }
+
+    // Detect auth method from user metadata if not provided
+    let detectedAuthMethod: 'apple' | 'google' | 'email' = authMethod || 'email';
+    if (!authMethod && user.app_metadata?.provider) {
+      const provider = user.app_metadata.provider;
+      if (provider === 'apple') {
+        detectedAuthMethod = 'apple';
+      } else if (provider === 'google') {
+        detectedAuthMethod = 'google';
+      }
+    }
+
+    // Check if user already exists in the users table
+    const { data: existingUser, error: checkError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', user.id)
+      .single();
+
+    // If user doesn't exist, create a new record
+    if (!existingUser) {
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert({
+          id: user.id,
+          email: user.email,
+          auth_method: detectedAuthMethod,
+          // plan defaults to 'free' in the database
+          // notes_count defaults to 0 in the database
+          // date_created defaults to now() in the database
+        });
+
+      if (insertError) {
+        // If it's a unique constraint violation, user might have been created concurrently
+        if (insertError.code === '23505') {
+          console.log('User already exists (created concurrently)');
+        } else {
+          console.error('Error creating user in database:', insertError);
+          throw insertError;
+        }
+      } else {
+        console.log(`User created in database: ${user.email} (auth_method: ${detectedAuthMethod})`);
+      }
+    } else {
+      console.log('User already exists in database:', user.email);
+    }
+  } catch (error) {
+    console.error('Error ensuring user in database:', error);
+    // Don't throw - we don't want to block authentication if this fails
+  }
+}
+

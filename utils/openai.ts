@@ -15,7 +15,7 @@ if (!OPENAI_API_KEY) {
 }
 
 export interface ExpenseData {
-  amount: number;
+  amount: number | null;
   date: string | null;
   memo: string;
   category: string;
