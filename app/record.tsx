@@ -1,6 +1,5 @@
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Ionicons } from '@expo/vector-icons';
 import {
   RecordingPresets,
@@ -15,7 +14,6 @@ import {
   Animated,
   Platform,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -36,8 +34,6 @@ try {
 
 export default function RecordScreen() {
   const [transcription, setTranscription] = useState('');
-  const [isStopped, setIsStopped] = useState(false);
-  const colorScheme = useColorScheme();
   const router = useRouter();
   const waveformAnimations = useRef<Animated.Value[]>(
     Array.from({ length: 50 }, () => new Animated.Value(0.3))
@@ -165,7 +161,6 @@ export default function RecordScreen() {
       
       isRecordingRef.current = true;
       setTranscription(''); // Reset transcription
-      setIsStopped(false); // Reset stopped state
 
       // Start speech recognition
       try {
@@ -187,7 +182,7 @@ export default function RecordScreen() {
     }
   }
 
-  async function stopRecording() {
+  async function stopRecording(shouldNavigate: boolean = false) {
     try {
       isRecordingRef.current = false;
 
@@ -225,8 +220,13 @@ export default function RecordScreen() {
         console.log('Final transcription on stop:', transcription);
       }
 
-      // Mark recording as stopped
-      setIsStopped(true);
+      // Auto-navigate to transcription if we have a transcription and should navigate
+      if (shouldNavigate && transcription) {
+        router.push({
+          pathname: '/transcription',
+          params: { text: transcription },
+        });
+      }
     } catch (err) {
       console.error('Failed to stop recording', err);
     }
@@ -239,18 +239,9 @@ export default function RecordScreen() {
 
   const handleMicPress = () => {
     if (recorderState.isRecording) {
-      stopRecording();
+      stopRecording(true); // Auto-navigate to transcription
     } else {
       startRecording();
-    }
-  };
-
-  const handleExpenseIt = () => {
-    if (transcription) {
-      router.push({
-        pathname: '/transcription',
-        params: { text: transcription },
-      });
     }
   };
 
@@ -322,7 +313,7 @@ export default function RecordScreen() {
           })}
         </View>
 
-        {/* Microphone/Stop Button or Expense It Button */}
+        {/* Microphone/Stop Button */}
         <View style={styles.micContainer}>
           {recorderState.isRecording ? (
             <TouchableOpacity
@@ -330,13 +321,6 @@ export default function RecordScreen() {
               onPress={handleMicPress}
               activeOpacity={0.8}>
               <View style={styles.stopIcon} />
-            </TouchableOpacity>
-          ) : isStopped && transcription ? (
-            <TouchableOpacity
-              style={styles.expenseButton}
-              onPress={handleExpenseIt}
-              activeOpacity={0.8}>
-              <Text style={styles.expenseButtonText}>Expense It</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
@@ -448,23 +432,5 @@ const styles = StyleSheet.create({
     height: 28,
     backgroundColor: '#fff',
     borderRadius: 4,
-  },
-  expenseButton: {
-    width: 200,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#34C759',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#34C759',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  expenseButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
   },
 });

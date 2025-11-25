@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -7,6 +7,10 @@ import {
   ScrollView,
   Platform,
   ActivityIndicator,
+  Keyboard,
+  TouchableWithoutFeedback,
+  Animated,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
@@ -15,6 +19,8 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { supabase } from '@/utils/supabase';
+import { Swipeable } from 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 interface Expense {
   id: string;
@@ -166,6 +172,61 @@ export default function HomeScreen() {
     return Math.round(amount).toString();
   };
 
+  // Store refs for swipeable components to close them
+  const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
+
+  // Delete expense from Supabase
+  const handleDeleteExpense = async (expenseId: string) => {
+    try {
+      const { error } = await supabase
+        .from('notes')
+        .delete()
+        .eq('id', expenseId);
+
+      if (error) {
+        console.error('Error deleting expense:', error);
+        Alert.alert('Error', 'Failed to delete expense. Please try again.');
+        return;
+      }
+
+      // Close the swipeable
+      const swipeable = swipeableRefs.current.get(expenseId);
+      if (swipeable) {
+        swipeable.close();
+      }
+
+      // Refresh the list
+      fetchNotes();
+    } catch (error) {
+      console.error('Error in handleDeleteExpense:', error);
+      Alert.alert('Error', 'An unexpected error occurred.');
+    }
+  };
+
+  // Render delete action for swipeable
+  const renderRightActions = (
+    progress: Animated.AnimatedInterpolation<number>,
+    dragX: Animated.AnimatedInterpolation<number>,
+    expenseId: string
+  ) => {
+    const translateX = dragX.interpolate({
+      inputRange: [-80, 0],
+      outputRange: [0, 80],
+      extrapolate: 'clamp',
+    });
+
+    return (
+      <Animated.View style={[styles.deleteAction, { transform: [{ translateX }] }]}>
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={() => handleDeleteExpense(expenseId)}
+          activeOpacity={0.8}>
+          <Ionicons name="trash-outline" size={24} color="#fff" />
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
   // Filter expenses based on search query
   const filteredExpenses = expenseGroups.map((group) => ({
     ...group,
@@ -176,127 +237,148 @@ export default function HomeScreen() {
   })).filter((group) => group.expenses.length > 0);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <ThemedView style={styles.content}>
-        {/* Header */}
-        <View style={styles.header}>
-          <ThemedText type="title" style={styles.title}>
-            Expenses
-          </ThemedText>
-        </View>
+    <GestureHandlerRootView style={styles.statusBarBackground}>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <ThemedView style={styles.content}>
+            {/* Header */}
+            <View style={styles.header}>
+              <ThemedText type="title" style={styles.title}>
+                Expenses
+              </ThemedText>
+            </View>
 
-        {/* Search and Add Section */}
-        <View style={styles.searchSection}>
-          <View
-            style={[
-              styles.searchBar,
-              isDark && styles.searchBarDark,
-            ]}>
-            <Ionicons
-              name="search"
-              size={18}
-              color={isDark ? '#9BA1A6' : '#687076'}
-              style={styles.searchIcon}
-            />
-            <TextInput
+          {/* Search Section */}
+          <View style={styles.searchSection}>
+            <View
               style={[
-                styles.searchInput,
-                isDark && styles.searchInputDark,
-              ]}
-              placeholder="Search"
-              placeholderTextColor={isDark ? '#9BA1A6' : '#687076'}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
+                styles.searchBar,
+                isDark && styles.searchBarDark,
+              ]}>
+              <Ionicons
+                name="search"
+                size={18}
+                color={isDark ? '#9BA1A6' : '#687076'}
+                style={styles.searchIcon}
+              />
+              <TextInput
+                style={[
+                  styles.searchInput,
+                  isDark && styles.searchInputDark,
+                ]}
+                placeholder="Search"
+                placeholderTextColor={isDark ? '#9BA1A6' : '#687076'}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+            </View>
+            <TouchableOpacity
+              style={styles.addButton}
+              activeOpacity={0.7}
+              onPress={() => router.push('/add-expense')}>
+              <Ionicons name="add" size={28} color="#007AFF" />
+            </TouchableOpacity>
           </View>
+
+          {/* Expense List */}
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={isDark ? '#ECEDEE' : '#11181C'} />
+            </View>
+          ) : filteredExpenses.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <ThemedText style={styles.emptyText}>
+                {searchQuery ? 'No expenses found' : 'No expenses yet'}
+              </ThemedText>
+            </View>
+          ) : (
+            <ScrollView
+              style={styles.expenseList}
+              contentContainerStyle={styles.expenseListContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled">
+              {filteredExpenses.map((group, groupIndex) => (
+                <View key={`${group.month}-${group.year}`} style={styles.expenseGroup}>
+                  <ThemedText style={styles.monthHeader}>
+                    {group.month} {group.year}
+                  </ThemedText>
+                  {group.expenses.map((expense) => (
+                    <Swipeable
+                      key={expense.id}
+                      ref={(ref) => {
+                        if (ref) {
+                          swipeableRefs.current.set(expense.id, ref);
+                        } else {
+                          swipeableRefs.current.delete(expense.id);
+                        }
+                      }}
+                      renderRightActions={(progress, dragX) =>
+                        renderRightActions(progress, dragX, expense.id)
+                      }
+                      overshootRight={false}
+                      friction={2}>
+                      <View
+                        style={[
+                          styles.expenseItem,
+                          groupIndex === filteredExpenses.length - 1 &&
+                            expense.id === group.expenses[group.expenses.length - 1].id &&
+                            styles.lastExpenseItem,
+                        ]}>
+                        <View style={styles.expenseContent}>
+                          <ThemedText style={styles.expenseDate}>
+                            {expense.month}/{expense.day}
+                          </ThemedText>
+                          <ThemedText style={styles.expenseDescription}>
+                            {expense.description}
+                          </ThemedText>
+                          <ThemedText style={styles.expenseAmount}>
+                            ${formatAmount(expense.amount)}
+                          </ThemedText>
+                        </View>
+                      </View>
+                    </Swipeable>
+                  ))}
+                </View>
+              ))}
+            </ScrollView>
+          )}
+
+          {/* Floating Action Button */}
           <TouchableOpacity
-            style={[
-              styles.addButton,
-              isDark && styles.addButtonDark,
-            ]}>
-            <Ionicons
-              name="add"
-              size={24}
-              color={isDark ? '#ECEDEE' : '#11181C'}
-            />
+            style={styles.fab}
+            activeOpacity={0.8}
+            onPress={() => router.push('/record')}>
+            <Ionicons name="mic" size={28} color="#fff" />
           </TouchableOpacity>
-        </View>
-
-        {/* Expense List */}
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={isDark ? '#ECEDEE' : '#11181C'} />
-          </View>
-        ) : filteredExpenses.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <ThemedText style={styles.emptyText}>
-              {searchQuery ? 'No expenses found' : 'No expenses yet'}
-            </ThemedText>
-          </View>
-        ) : (
-          <ScrollView
-            style={styles.expenseList}
-            contentContainerStyle={styles.expenseListContent}
-            showsVerticalScrollIndicator={false}>
-            {filteredExpenses.map((group, groupIndex) => (
-              <View key={`${group.month}-${group.year}`} style={styles.expenseGroup}>
-                <ThemedText style={styles.monthHeader}>
-                  {group.month} {group.year}
-                </ThemedText>
-                {group.expenses.map((expense) => (
-                  <View
-                    key={expense.id}
-                    style={[
-                      styles.expenseItem,
-                      groupIndex === filteredExpenses.length - 1 &&
-                        expense.id === group.expenses[group.expenses.length - 1].id &&
-                        styles.lastExpenseItem,
-                    ]}>
-                    <View style={styles.expenseContent}>
-                      <ThemedText style={styles.expenseDate}>
-                        {expense.month}/{expense.day}
-                      </ThemedText>
-                      <ThemedText style={styles.expenseDescription}>
-                        {expense.description}
-                      </ThemedText>
-                      <ThemedText style={styles.expenseAmount}>
-                        ${formatAmount(expense.amount)}
-                      </ThemedText>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            ))}
-          </ScrollView>
-        )}
-
-        {/* Floating Action Button */}
-        <TouchableOpacity
-          style={styles.fab}
-          activeOpacity={0.8}
-          onPress={() => router.push('/record')}>
-          <Ionicons name="mic" size={28} color="#fff" />
-        </TouchableOpacity>
-      </ThemedView>
+        </ThemedView>
+      </TouchableWithoutFeedback>
     </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
+  statusBarBackground: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
   container: {
     flex: 1,
+    backgroundColor: '#fff',
   },
   content: {
     flex: 1,
     paddingHorizontal: 20,
+    backgroundColor: '#fff',
   },
   header: {
-    paddingTop: Platform.OS === 'ios' ? 8 : 16,
+    paddingTop: Platform.OS === 'ios' ? 40 : 48,
     paddingBottom: 24,
   },
   title: {
     fontSize: 34,
     fontWeight: '700',
+    color: '#000',
   },
   searchSection: {
     flexDirection: 'row',
@@ -332,36 +414,51 @@ const styles = StyleSheet.create({
   addButton: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 122, 255, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  addButtonDark: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   expenseList: {
     flex: 1,
   },
   expenseListContent: {
     paddingBottom: 100, // Space for FAB
+    overflow: 'visible',
   },
   expenseGroup: {
     marginBottom: 24,
+    overflow: 'visible',
   },
   monthHeader: {
     fontSize: 13,
     fontWeight: '600',
     letterSpacing: 0.5,
-    opacity: 0.6,
+    color: '#555',
     marginBottom: 12,
     textTransform: 'uppercase',
   },
   expenseItem: {
-    marginBottom: 16,
+    marginBottom: 24,
+    backgroundColor: '#fff',
+    paddingVertical: 8,
   },
   lastExpenseItem: {
-    marginBottom: 0,
+    marginBottom: 8,
+  },
+  deleteAction: {
+    width: 80,
+    marginLeft: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteButton: {
+    width: 80,
+    height: 50,
+    backgroundColor: '#FF3B30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
   },
   expenseContent: {
     flexDirection: 'row',
@@ -372,15 +469,18 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '400',
     minWidth: 50,
+    color: '#000',
   },
   expenseDescription: {
     flex: 1,
     fontSize: 17,
     fontWeight: '400',
+    color: '#000',
   },
   expenseAmount: {
     fontSize: 17,
     fontWeight: '400',
+    color: '#000',
   },
   loadingContainer: {
     flex: 1,
@@ -396,7 +496,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 17,
-    opacity: 0.6,
+    color: '#555',
   },
   fab: {
     position: 'absolute',

@@ -8,6 +8,7 @@ import {
   Platform,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   Alert,
@@ -189,31 +190,41 @@ export default function TranscriptionScreen() {
             </View>
           ) : expenseData ? (
             <>
-              <DetailRow label="Amount" value={formatAmount(expenseData.amount)} />
-              <DetailRow label="Date" value={expenseData.date || getTodayDate()} />
-              <DetailRow label="Memo" value={expenseData.memo} />
-              <DetailRow label="Category" value={expenseData.category} />
+              <EditableDetailRow 
+                label="Amount" 
+                value={formatAmount(expenseData.amount)}
+                onChangeText={(text) => {
+                  // Parse amount from formatted string (remove $ and parse as number)
+                  const numericValue = parseFloat(text.replace(/[^0-9.]/g, '')) || 0;
+                  setExpenseData({ ...expenseData, amount: numericValue });
+                }}
+                keyboardType="decimal-pad"
+              />
+              <EditableDetailRow 
+                label="Date" 
+                value={expenseData.date || getTodayDate()}
+                onChangeText={(text) => setExpenseData({ ...expenseData, date: text })}
+              />
+              <EditableDetailRow 
+                label="Memo" 
+                value={expenseData.memo || ''}
+                onChangeText={(text) => setExpenseData({ ...expenseData, memo: text })}
+              />
+              <EditableDetailRow 
+                label="Category" 
+                value={expenseData.category || ''}
+                onChangeText={(text) => setExpenseData({ ...expenseData, category: text })}
+              />
             </>
           ) : null}
         </View>
 
-        {/* Action Buttons */}
+        {/* Cancel Button */}
         <View style={styles.buttonContainer}>
           <TouchableOpacity
-            style={styles.editButton}
-            onPress={() => {
-              // TODO: Implement edit functionality
-              console.log('Edit pressed');
-            }}>
-            <Text style={styles.buttonText}>Edit</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={() => {
-              // TODO: Implement delete functionality
-              router.back();
-            }}>
-            <Text style={styles.buttonText}>Delete</Text>
+            style={styles.cancelButton}
+            onPress={() => router.back()}>
+            <Text style={styles.buttonText}>Cancel</Text>
           </TouchableOpacity>
         </View>
 
@@ -235,11 +246,28 @@ export default function TranscriptionScreen() {
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function EditableDetailRow({ 
+  label, 
+  value, 
+  onChangeText,
+  keyboardType = 'default',
+}: { 
+  label: string; 
+  value: string;
+  onChangeText: (text: string) => void;
+  keyboardType?: 'default' | 'decimal-pad' | 'numeric';
+}) {
   return (
     <View style={styles.detailRow}>
       <ThemedText style={styles.detailLabel}>{label}</ThemedText>
-      <ThemedText style={styles.detailValue}>{value}</ThemedText>
+      <TextInput
+        style={styles.detailInput}
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType}
+        placeholder={`Enter ${label.toLowerCase()}`}
+        placeholderTextColor="#999"
+      />
     </View>
   );
 }
@@ -278,30 +306,24 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '400',
     color: '#000',
+    minWidth: 80,
   },
-  detailValue: {
+  detailInput: {
     fontSize: 17,
     fontWeight: '400',
     color: '#000',
     textAlign: 'right',
     flex: 1,
     marginLeft: 16,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    backgroundColor: '#F9F9F9',
+    borderRadius: 6,
   },
   buttonContainer: {
-    flexDirection: 'row',
-    gap: 12,
     marginBottom: 16,
   },
-  editButton: {
-    flex: 1,
-    height: 50,
-    borderRadius: 12,
-    backgroundColor: '#F2F2F7',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteButton: {
-    flex: 1,
+  cancelButton: {
     height: 50,
     borderRadius: 12,
     backgroundColor: '#F2F2F7',

@@ -181,11 +181,6 @@ export default function AuthScreen() {
     }
   };
 
-  const handleSkip = () => {
-    // Allow users to skip authentication for now
-    router.replace('/(tabs)/');
-  };
-
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ThemedView style={styles.content}>
@@ -315,14 +310,6 @@ export default function AuthScreen() {
             )}
           </TouchableOpacity>
         </View>
-
-        {/* Skip Button */}
-        <TouchableOpacity
-          style={styles.skipButton}
-          onPress={handleSkip}
-          disabled={loading}>
-          <ThemedText style={styles.skipText}>Skip for now</ThemedText>
-        </TouchableOpacity>
       </ThemedView>
     </SafeAreaView>
   );
@@ -438,15 +425,6 @@ const styles = StyleSheet.create({
   },
   googleButtonTextDark: {
     color: '#fff',
-  },
-  skipButton: {
-    alignItems: 'center',
-    paddingVertical: 16,
-  },
-  skipText: {
-    fontSize: 16,
-    opacity: 0.6,
-    fontWeight: '500',
   },
 });
 

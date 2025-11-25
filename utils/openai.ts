@@ -44,6 +44,12 @@ export async function categorizeText(text: string): Promise<ExpenseData | string
 - memo: a brief description of the expense
 - category: the expense category (e.g., "Meals", "Transportation", "Office Supplies", etc.)
 
+IMPORTANT - Amount interpretation: When the spoken amount is ambiguous (e.g., "two seventy five" could mean $2.75 or $275), use the context of the memo/description to determine the correct amount:
+- Small purchases (coffee, snacks, parking, small meals, drinks) typically range from $1-$50, so "two seventy five" = $2.75
+- Medium purchases (restaurant meals, gas, groceries, small items) typically range from $10-$200, so "two seventy five" = $275.00
+- Large purchases (hotels, flights, electronics, furniture) typically range from $100-$1000+, so "two seventy five" = $275.00
+- Use your knowledge of typical price ranges for the type of expense described in the memo to make the determination
+
 Text: ${text}
 
 Return only valid JSON in this format:
