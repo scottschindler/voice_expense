@@ -13,10 +13,12 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "This app needs access to your microphone to record expense entries.",
         "NSSpeechRecognitionUsageDescription": "This app needs access to speech recognition to transcribe your expense entries.",
+        "NSPhotoLibraryUsageDescription": "This app may need access to your photo library to attach receipt images to expense entries.",
         "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "com.scotty529.voiceexpense",
-      "appleTeamId": "FXP7V2GTRN"
+      "appleTeamId": "FXP7V2GTRN",
+      "jsEngine": "hermes"
     },
     "android": {
       "adaptiveIcon": {

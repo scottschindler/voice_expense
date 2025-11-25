@@ -12,10 +12,28 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "ios": {
+        "buildConfiguration": "Release",
+        "simulator": false
+      },
+      "env": {
+        "EXPO_NO_DOTENV": "1"
+      }
+    },
+    "production-jsc": {
+      "autoIncrement": true,
+      "ios": {
+        "buildConfiguration": "Release",
+        "simulator": false
+      },
+      "env": {
+        "EXPO_NO_DOTENV": "1"
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": {},
+    "production-jsc": {}
   }
 }

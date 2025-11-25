@@ -9,7 +9,9 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "validate:info-plist": "node ./scripts/validate-info-plist.js",
+    "prebuild": "npm run validate:info-plist"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
