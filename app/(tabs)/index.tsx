@@ -167,13 +167,28 @@ export default function HomeScreen() {
     }, [fetchNotes])
   );
 
-  // Format amount as whole dollars without decimals
+  // Format amount with two decimal places
   const formatAmount = (amount: number) => {
-    return Math.round(amount).toString();
+    return amount.toFixed(2);
   };
 
   // Store refs for swipeable components to close them
   const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
+
+  // Handle edit expense - navigate to edit screen with expense ID
+  const handleEditExpense = (expenseId: string) => {
+    // Close the swipeable
+    const swipeable = swipeableRefs.current.get(expenseId);
+    if (swipeable) {
+      swipeable.close();
+    }
+    
+    // Navigate to edit screen with expense ID
+    router.push({
+      pathname: '/edit-expense',
+      params: { id: expenseId },
+    });
+  };
 
   // Delete expense from Supabase
   const handleDeleteExpense = async (expenseId: string) => {
@@ -203,7 +218,7 @@ export default function HomeScreen() {
     }
   };
 
-  // Render delete action for swipeable
+  // Render delete action for swipeable (swipe left)
   const renderRightActions = (
     progress: Animated.AnimatedInterpolation<number>,
     dragX: Animated.AnimatedInterpolation<number>,
@@ -222,6 +237,30 @@ export default function HomeScreen() {
           onPress={() => handleDeleteExpense(expenseId)}
           activeOpacity={0.8}>
           <Ionicons name="trash-outline" size={24} color="#fff" />
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
+  // Render edit action for swipeable (swipe right)
+  const renderLeftActions = (
+    progress: Animated.AnimatedInterpolation<number>,
+    dragX: Animated.AnimatedInterpolation<number>,
+    expenseId: string
+  ) => {
+    const translateX = dragX.interpolate({
+      inputRange: [0, 80],
+      outputRange: [-80, 0],
+      extrapolate: 'clamp',
+    });
+
+    return (
+      <Animated.View style={[styles.editAction, { transform: [{ translateX }] }]}>
+        <TouchableOpacity
+          style={styles.editButton}
+          onPress={() => handleEditExpense(expenseId)}
+          activeOpacity={0.8}>
+          <Ionicons name="create-outline" size={24} color="#fff" />
         </TouchableOpacity>
       </Animated.View>
     );
@@ -315,7 +354,11 @@ export default function HomeScreen() {
                       renderRightActions={(progress, dragX) =>
                         renderRightActions(progress, dragX, expense.id)
                       }
+                      renderLeftActions={(progress, dragX) =>
+                        renderLeftActions(progress, dragX, expense.id)
+                      }
                       overshootRight={false}
+                      overshootLeft={false}
                       friction={2}>
                       <View
                         style={[
@@ -456,6 +499,20 @@ const styles = StyleSheet.create({
     width: 80,
     height: 50,
     backgroundColor: '#FF3B30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  editAction: {
+    width: 80,
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editButton: {
+    width: 80,
+    height: 50,
+    backgroundColor: '#007AFF',
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 8,
