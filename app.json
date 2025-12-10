@@ -18,7 +18,8 @@
       },
       "bundleIdentifier": "com.scotty529.voiceexpense",
       "appleTeamId": "FXP7V2GTRN",
-      "jsEngine": "hermes"
+      "jsEngine": "hermes",
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
@@ -43,6 +44,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-apple-authentication",
       [
         "expo-splash-screen",
         {

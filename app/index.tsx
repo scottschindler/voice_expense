@@ -14,27 +14,26 @@
  *    - Google: https://supabase.com/docs/guides/auth/social-login/auth-google
  */
 
-import { useState, useEffect } from 'react';
-import {
-  StyleSheet,
-  View,
-  TouchableOpacity,
-  Platform,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors } from '@/constants/theme';
-import * as AppleAuthentication from 'expo-apple-authentication';
-import * as WebBrowser from 'expo-web-browser';
-import * as Linking from 'expo-linking';
-import * as QueryParams from 'expo-auth-session/build/QueryParams';
-import { useRouter } from 'expo-router';
+import { ensureUserInDatabase, supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase, ensureUserInDatabase } from '@/utils/supabase';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as QueryParams from 'expo-auth-session/build/QueryParams';
+import * as Linking from 'expo-linking';
+import { useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Platform,
+    StyleSheet,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Required for web only
 WebBrowser.maybeCompleteAuthSession();
@@ -107,6 +106,26 @@ export default function AuthScreen() {
 
         if (error) {
           throw error;
+        }
+
+        // Apple only provides the user's full name on the first sign-in
+        // Save it to user metadata if available
+        if (credential.fullName) {
+          const nameParts: string[] = [];
+          if (credential.fullName.givenName) nameParts.push(credential.fullName.givenName);
+          if (credential.fullName.middleName) nameParts.push(credential.fullName.middleName);
+          if (credential.fullName.familyName) nameParts.push(credential.fullName.familyName);
+          const fullName = nameParts.join(' ');
+
+          if (fullName) {
+            await supabase.auth.updateUser({
+              data: {
+                full_name: fullName,
+                given_name: credential.fullName.givenName,
+                family_name: credential.fullName.familyName,
+              },
+            });
+          }
         }
 
         // Ensure user exists in database after successful authentication
