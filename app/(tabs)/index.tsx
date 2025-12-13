@@ -3,7 +3,9 @@ import { ThemedView } from '@/components/themed-view';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useFocusEffect, useRouter } from 'expo-router';
+import * as Sharing from 'expo-sharing';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -274,6 +276,94 @@ export default function HomeScreen() {
     ),
   })).filter((group) => group.expenses.length > 0);
 
+  // Handle CSV export
+  const handleExportCSV = async () => {
+    try {
+      setLoading(true);
+      
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        Alert.alert('Error', 'Please log in to export your data.');
+        return;
+      }
+
+      // Fetch all notes for the current user
+      const { data: notes, error } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('date_of_transaction', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching notes:', error);
+        Alert.alert('Error', 'Failed to fetch expenses. Please try again.');
+        return;
+      }
+
+      if (!notes || notes.length === 0) {
+        Alert.alert('No Data', 'You have no expenses to export.');
+        return;
+      }
+
+      // Create CSV header
+      const csvHeader = 'ID,Date,Amount,Description,Category,Transcript,Email,Created At\n';
+      
+      // Convert notes to CSV rows
+      const csvRows = notes.map((note) => {
+        // Escape commas and quotes in CSV values
+        const escapeCSV = (value: any) => {
+          if (value === null || value === undefined) return '';
+          const stringValue = String(value);
+          // If value contains comma, quote, or newline, wrap in quotes and escape quotes
+          if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+            return `"${stringValue.replace(/"/g, '""')}"`;
+          }
+          return stringValue;
+        };
+
+        return [
+          escapeCSV(note.id),
+          escapeCSV(note.date_of_transaction),
+          escapeCSV(note.amount),
+          escapeCSV(note.description),
+          escapeCSV(note.category),
+          escapeCSV(note.transcript),
+          escapeCSV(note.email),
+          escapeCSV(note.created_at),
+        ].join(',');
+      });
+
+      // Combine header and rows
+      const csvContent = csvHeader + csvRows.join('\n');
+
+      // Create filename with timestamp
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `expenses_${timestamp}.csv`;
+      const fileUri = FileSystem.documentDirectory + filename;
+
+      // Write file (UTF-8 is the default encoding)
+      await FileSystem.writeAsStringAsync(fileUri, csvContent);
+
+      // Check if sharing is available
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (isAvailable) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'text/csv',
+          dialogTitle: 'Export Expenses',
+        });
+      } else {
+        Alert.alert('Success', `CSV file saved to: ${fileUri}`);
+      }
+    } catch (error) {
+      console.error('Error exporting CSV:', error);
+      Alert.alert('Error', 'Failed to export CSV. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <GestureHandlerRootView style={styles.statusBarBackground}>
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -281,9 +371,25 @@ export default function HomeScreen() {
           <ThemedView style={styles.content}>
             {/* Header */}
             <View style={styles.header}>
-              <ThemedText type="title" style={styles.title}>
-                Expenses
-              </ThemedText>
+              <View style={styles.headerRow}>
+                <ThemedText type="title" style={styles.title}>
+                  Expenses
+                </ThemedText>
+                <TouchableOpacity
+                  style={[
+                    styles.exportButton,
+                    isDark && styles.exportButtonDark,
+                  ]}
+                  onPress={handleExportCSV}
+                  disabled={loading}
+                  activeOpacity={0.7}>
+                  <Ionicons 
+                    name="download-outline" 
+                    size={24} 
+                    color={isDark ? '#ECEDEE' : '#007AFF'} 
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
 
           {/* Search Section */}
@@ -417,10 +523,23 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 40 : 48,
     paddingBottom: 24,
   },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   title: {
     fontSize: 34,
     fontWeight: '700',
     color: '#000',
+  },
+  exportButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0, 122, 255, 0.1)',
+  },
+  exportButtonDark: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   searchSection: {
     flexDirection: 'row',
